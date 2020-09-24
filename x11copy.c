@@ -1,32 +1,46 @@
-#include <string.h> // strlen
+#include <string.h>
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 
 Display * display;
 Window window;
-Atom targets_atom, text_atom, UTF8, XA_ATOM = 4, XA_STRING = 31;
+Atom targets_atom, text_atom, UTF8;
+unsigned char *text;
 
-static void XCopy(Atom selection, unsigned char * text, int size) {
+static void XCopy() {
 	XEvent event;
 	Window owner;
+	int size, R;
+	Atom selection = XInternAtom(display, "CLIPBOARD", 0);
 	XSetSelectionOwner (display, selection, window, 0);
 	if (XGetSelectionOwner (display, selection) != window) return;
 	while (1) {
 		XNextEvent (display, &event);
 		switch (event.type) {
 			case SelectionRequest:
+			size = strlen(text);
 			if (event.xselectionrequest.selection != selection) break;
-			XSelectionRequestEvent * xsr = &event.xselectionrequest;
+
 			XSelectionEvent ev = {0};
-			int R = 0;
-			ev.type = SelectionNotify, ev.display = xsr->display, ev.requestor = xsr->requestor,
-			ev.selection = xsr->selection, ev.time = xsr->time, ev.target = xsr->target, ev.property = xsr->property;
-			if (ev.target == targets_atom) R = XChangeProperty (ev.display, ev.requestor, ev.property, XA_ATOM, 32,
+			ev.type = SelectionNotify;
+			ev.display = event.xselectionrequest.display;
+			ev.requestor = event.xselectionrequest.requestor;
+			ev.selection = event.xselectionrequest.selection;
+			ev.time = event.xselectionrequest.time;
+			ev.target = event.xselectionrequest.target;
+			ev.property = event.xselectionrequest.property;
+
+			if (ev.target == targets_atom)
+				R = XChangeProperty (ev.display, ev.requestor, ev.property, XA_ATOM, 32,
 					PropModeReplace, (unsigned char*)&UTF8, 1);
 			else if (ev.target == XA_STRING || ev.target == text_atom) 
 				R = XChangeProperty(ev.display, ev.requestor, ev.property, XA_STRING, 8, PropModeReplace, text, size);
 			else if (ev.target == UTF8)
 				R = XChangeProperty(ev.display, ev.requestor, ev.property, UTF8, 8, PropModeReplace, text, size);
-			else ev.property = None;
+			else {
+				ev.property = None;
+				R = 0;
+			}
 			if ((R & 2) == 0) XSendEvent (display, ev.requestor, 0, 0, (XEvent *)&ev);
 			break;
 			case SelectionClear:
@@ -45,5 +59,6 @@ int main(int argc, char *argv[]) {
 	UTF8 = XInternAtom(display, "UTF8_STRING", 1);
 	if (UTF8 == None) UTF8 = XA_STRING;
 	Atom selection = XInternAtom(display, "CLIPBOARD", 0);
-	XCopy(selection, (unsigned char*) argv[1], strlen(argv[1]));
+	text = argv[1];
+	XCopy();
 }
